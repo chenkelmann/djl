@@ -1,10 +1,19 @@
 package ai.djl.modality.nlp.preprocess;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class BytePairEncoding {
+/**
+ *
+ */
+public class BytePairEncoding implements TextProcessor {
+
+    /**
+     * Unlike the original paper, we use the NUL char U+0000 to indicate the end of a word.
+     */
+    public static char END_OF_WORD = 0;
 
     /** A set of all tokens and their dictionary ids. */
     private Map<String, Long> tokenToId = new HashMap<>();
@@ -44,21 +53,69 @@ public class BytePairEncoding {
      *
      * @param word A word, must end with the NUL char
      * @param splitting A splitting of the given word. Must concatenate back to the given word.
-     * @param createTokens if true, non-existant tokens are automatically created. If false, a
+     * @param createTokens if true, non-existent tokens are automatically created. If false, a
      *     runtime exception is thrown if a token in the splitting does not exist.
      */
-    public void addSplit(
-            final String word, final List<String> splitting, final boolean createTokens) {}
+    public void addSplit(final String word, final List<String> splitting, final boolean createTokens) {
+        for (final String token : splitting) {
+            if (getTokenId(token) == null) {
+                if (createTokens) {
+                    addToken(token);
+                } else {
+                    throw new IllegalArgumentException("Cannot add splitting for word '" + word + "' using token '" +
+                            token + "', token is not in the dictionary.");
+                }
+            }
+        }
+        this.splitLookup.put(word, splitting);
+    }
+
+
 
     public static BytePairEncoding trainEncoding(final Map<String, Long> wordsToFrequencies) {
-        // first, determine all codepoints present in the words, turn them into the base dictionary
+        // First, determine all codepoints present in the words, turn them into the base dictionary
 
         // then, create
         return null;
     }
 
-    /** A mapping from tokens to their frequency. */
-    private Map<String, Long> tokenToFrequency = new HashMap<>();
+
+
+    @Override
+    public List<String> preprocess(List<String> tokens) {
+        return null;
+    }
+
+    static class BytePairEncodingTrainer {
+        /** A mapping from tokens to their frequency. */
+        private Map<String, Long> tokenToFrequency = new HashMap<>();
+
+        private final BytePairEncoding bpEncoding;
+
+        public BytePairEncodingTrainer(final BytePairEncoding bpEncoding) {
+            this.bpEncoding = bpEncoding;
+        }
+
+        public void startEpoch() {
+            tokenToFrequency.clear();
+        }
+
+        private ArrayList<String> createInitialTokens(final String word) {
+            return word.codePoints().map((codepoint) -> new String(Character.toChars(codepoint)) );
+        }
+
+        public void trainEncoding(final Map<String, Long> wordsToFrequencies, final int targetSize) {
+            //setup: create a local copy of the words -> frequencies map, make sure words are ended by EOW token.
+            final Map<List<String>, Long> tokenizedWordsToFrequencies =
+
+
+
+            while (bp) {
+
+            }
+        }
+
+    }
 
     // Input: words and their frequencies
 
