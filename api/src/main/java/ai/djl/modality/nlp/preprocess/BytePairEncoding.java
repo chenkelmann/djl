@@ -12,6 +12,7 @@ public class BytePairEncoding implements TextProcessor {
 
     /**
      * Unlike the original paper, we use the NUL char U+0000 to indicate the end of a word.
+     * It allows for easier checks and is very unlikely to occur in real text.
      */
     public static char END_OF_WORD = 0;
 
@@ -69,17 +70,6 @@ public class BytePairEncoding implements TextProcessor {
         }
         this.splitLookup.put(word, splitting);
     }
-
-
-
-    public static BytePairEncoding trainEncoding(final Map<String, Long> wordsToFrequencies) {
-        // First, determine all codepoints present in the words, turn them into the base dictionary
-
-        // then, create
-        return null;
-    }
-
-
 
     @Override
     public List<String> preprocess(List<String> tokens) {
