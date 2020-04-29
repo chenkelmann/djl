@@ -8,16 +8,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Base class for SentencePiece models. TGiven a normalized string, returns a sequence of sentence pieces with ids.
+ * Base class for SentencePiece models.
  */
 public abstract class AbstractSentencePieceModel {
 
-    public static final int UNK_ID = 0;
-
-
-
-    public static enum SentencePieceType {
-        NORMAL, UNKONW, CONTROL, USER_DEFINED, UNUSED
+    public enum SentencePieceType {
+        NORMAL, UNKOWN, CONTROL, USER_DEFINED, UNUSED
     }
 
     public static class SentencePiece {
@@ -27,60 +23,91 @@ public abstract class AbstractSentencePieceModel {
     }
 
     public static class EncodeResult extends PairList<String, Integer> {}
-    public static class NBestEncodeResult extends PairList<EncodeResult, Float> {}
 
-    protected final Map<String, Integer> pieceToIdMap = new HashMap<>();
+    /**
+     * Mapping of normal pieces to their ids
+     */
+    protected Map<String, Integer> pieceToIdMap = new HashMap<>();
+    /**
+     * Mapping of reserved pieces (unknown, user defined, etc.) to their ids
+     */
+    protected Map<String, Integer> pieceToReservedIdMap = new HashMap<>();
+    /**
+     * List of all pieces, normal and reserved. Index in the list is the id of the piece.
+     */
+    protected List<SentencePiece> pieces;
+    /**
+     * the unknown piece
+     */
+    protected String unkPiece = "<unk>";
+    /**
+     * the beginning of Sequence piece
+     */
+    protected String bosPiece = "<s>";
+    /**
+     * the end of sequence piece
+     */
+    protected String eosPiece = "</s>";
+    /**
+     * the padding piece
+     */
+    protected String padPiece = "<pad>";
+    /**
+     * Id to use for the unknown token
+     */
+    protected int unkId = -1;
+    /**
+     * Matcher for user defined pieces.
+     */
+    protected PrefixMatcher prefixMatcher;
 
-    protected final ArrayList<SentencePiece> pieces = new ArrayList<>();
+    public AbstractSentencePieceModel(List<SentencePiece> pieces, String unkPiece,
+                                      String bosPiece, String eosPiece,
+                                      String padPiece)
+    {
+        this.pieces = pieces;
+        if (unkPiece != null && !unkPiece.isEmpty()) { this.unkPiece = unkPiece; }
+        if (bosPiece != null && !bosPiece.isEmpty()) { this.bosPiece = bosPiece; }
+        if (eosPiece != null && !eosPiece.isEmpty()) { this.eosPiece = eosPiece; }
+        if (padPiece != null && !padPiece.isEmpty()) { this.padPiece = padPiece; }
 
-    public AbstractSentencePieceModel() {
-        pieces_.clear();
-        reserved_id_map_.clear();
-        unk_id_ = -1;
+        List<String> userDefinedSymbols = new ArrayList<>();
 
-        std::set<absl::string_view> user_defined_symbols;
+        for (int i = 0; i < pieces.size(); i++) {
+            SentencePiece sp = pieces.get(i);
 
-        for (int i = 0; i < model_proto_->pieces_size(); ++i) {
-    const auto &sp = model_proto_->pieces(i);
-            if (sp.piece().empty()) {
-                status_ = util::InternalError("piece must not be empty.");
-                return;
+            if (sp.piece.isEmpty()) {
+                throw new IllegalArgumentException("Piece must not be empty.");
             }
 
-    const bool is_normal_piece =
-                    (sp.type() == ModelProto::SentencePiece::NORMAL ||
-                            sp.type() == ModelProto::SentencePiece::USER_DEFINED ||
-                    sp.type() == ModelProto::SentencePiece::UNUSED);
-            if (!port::InsertIfNotPresent(
-                    is_normal_piece ? &pieces_ : &reserved_id_map_, sp.piece(), i)) {
-                status_ = util::InternalError(sp.piece() + " is already defined.");
-                return;
+            // Pieces that are part of the "normal" text are considered normal in this context,
+            // Control & unknown pieces are treated differently
+            boolean isNormalPiece = sp.type == SentencePieceType.NORMAL ||
+                                    sp.type == SentencePieceType.USER_DEFINED ||
+                                    sp.type == SentencePieceType.UNUSED;
+            Integer previousId =
+                    (isNormalPiece ? pieceToIdMap : pieceToReservedIdMap).put(sp.piece, i);
+            if (previousId != null) {
+                throw new IllegalArgumentException("'" + sp.piece + "' is already defined.");
             }
 
-            if (sp.type() == ModelProto::SentencePiece::USER_DEFINED) {
-                user_defined_symbols.insert(sp.piece());
+            if (sp.type == SentencePieceType.USER_DEFINED) {
+                userDefinedSymbols.add(sp.piece);
             }
-
-            if (sp.type() == ModelProto::SentencePiece::UNKNOWN) {
-                if (unk_id_ >= 0) {
-                    status_ = util::InternalError("unk is already defined.");
-                    return;
+            if (sp.type == SentencePieceType.UNKOWN) {
+                if (unkId >= 0) {
+                    throw new IllegalArgumentException("'unk' is already defined.");
                 }
-                unk_id_ = i;
+                unkId = i;
             }
         }
 
-        if (unk_id_ == -1) {
-            status_ = util::InternalError("unk is not defined.");
-            return;
+        if (unkId == -1) {
+            throw new IllegalArgumentException("'unk' is not defined.");
         }
 
-        matcher_ = port::MakeUnique<normalizer::PrefixMatcher>(user_defined_symbols);
+        this.prefixMatcher = new PrefixMatcher(userDefinedSymbols);
     }
-
-    //TODO: add replacement for ModelProto, save it internally
-
-    //virtual const ModelProto &model_proto() const { return *model_proto_; }
 
     //virtual const normalizer::PrefixMatcher *prefix_matcher() const { return matcher_.get(); }
 
@@ -92,50 +119,51 @@ public abstract class AbstractSentencePieceModel {
     public abstract EncodeResult encode(final String normalized);
 
     /**
-     * Same as {@link AbstractSentencePieceModel#encode(String)}, but return the {@code bestCount} number of best
-     * results, not just the best one.
-     * @param normalized A unicode normalized non-null input string
-     * @param bestCount the number of best results to return
-     * @return The resulting tokenization, a list of list of pieces and their ids.
-     *         The concatenation of the pieces in each list must yield the original string.
-     */
-    public abstract NBestEncodeResult encode(final String normalized, final int bestCount);
-
-    public abstract EncodeResult sampleEncode(final String normalized, final float alpha);
-
-    /**
      * Returns the unknown piece
      * @return the unknown piece
      */
-    public String unkPiece() { return "<unk>"; }
+    public String getUnkPiece() { return unkPiece; }
 
     /**
      * Returns the begin of sequence piece
      * @return the begin of sequence piece
      */
-    public String bosPiece() { return "<s>"; }
+    public String getBosPiece() { return bosPiece; }
 
     /**
      * Returns the end of sequence piece
      * @return the end of sequence piece
      */
-    public String eosPiece() { return "</s>"; }
+    public String getEosPiece() { return eosPiece; }
 
     /**
      * Returns the padding piece
      * @return the padding piece
      */
-    public String padPiece() { return "<pad>"; }
+    public String getPadPiece() { return padPiece; }
 
     /**
-     * Returns the id of the given piece or {@link AbstractSentencePieceModel#UNK_ID}
+     * Returns the id used for unknown tokens.
+     * @return The id used for unknown tokens.
+     */
+    public int getUnkId() { return unkId; }
+
+    /**
+     * Returns the id of the given piece or {@link AbstractSentencePieceModel#getUnkId()}
      * if the piece is not part of this model.
      * @param piece a unicode normalized non-null string piece
-     * @return the id of the piece or {@link AbstractSentencePieceModel#UNK_ID}
+     * @return the id of the piece or {@link AbstractSentencePieceModel#getUnkId()}
      */
-    public int pieceToId(final String piece) {
-        final Integer id = pieceToIdMap.get(piece);
-        if (id == null) { return UNK_ID; } else { return id; }
+    public int getId(final String piece) {
+        Integer id = pieceToReservedIdMap.get(piece);
+        if (id == null) {
+            id = pieceToIdMap.get(piece);
+        }
+        if (id == null) {
+            return unkId;
+        } else {
+            return id;
+        }
     }
 
     /**
@@ -167,13 +195,13 @@ public abstract class AbstractSentencePieceModel {
     }
 
     /**
-     * Returns whether the piece with the given id is a piece with type {@link SentencePieceType#UNKONW}
+     * Returns whether the piece with the given id is a piece with type {@link SentencePieceType#UNKOWN}
      * or throws {@link ArrayIndexOutOfBoundsException} for invalid ids.
      * @param pieceId the pieceId of the piece, >= 0, < {@link AbstractSentencePieceModel#getVocabularySize()}
      * @return true: piece with given id is unknown piece
      */
     public boolean isUnknown(final int pieceId) {
-        return pieces.get(pieceId).type == SentencePieceType.UNKONW;
+        return pieces.get(pieceId).type == SentencePieceType.UNKOWN;
     }
 
     /**
@@ -205,10 +233,4 @@ public abstract class AbstractSentencePieceModel {
     public boolean isUserDefined(final int pieceId) {
         return pieces.get(pieceId).type == SentencePieceType.USER_DEFINED;
     }
-
-    protected abstract void initializePieces();
-
-    // PrefixMatcher for user defined symbols.
-    // TODO
-    //std::unique_ptr<normalizer::PrefixMatcher> matcher_;
 }
