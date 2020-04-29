@@ -1,16 +1,23 @@
 package ai.djl.modality.nlp.preprocess;
 
+import ai.djl.ndarray.NDList;
+import ai.djl.translate.PreProcessor;
+import ai.djl.translate.TranslatorContext;
+import ai.djl.util.Pair;
 import ai.djl.util.PairList;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Base class for SentencePiece models.
  */
-public abstract class AbstractSentencePieceModel {
+public abstract class AbstractSentencePieceModel
+        implements PreProcessor<String>, TextProcessor, Tokenizer
+{
 
     public enum SentencePieceType {
         NORMAL, UNKOWN, CONTROL, USER_DEFINED, UNUSED
@@ -109,14 +116,29 @@ public abstract class AbstractSentencePieceModel {
         this.prefixMatcher = new PrefixMatcher(userDefinedSymbols);
     }
 
-    //virtual const normalizer::PrefixMatcher *prefix_matcher() const { return matcher_.get(); }
-
     /** Performs tokenization according to this model.
      * @param normalized A unicode normalized non-null input string
      * @return The resulting tokenization, a list of pieces and their ids. The concatenation of the pieces must yield
      * the original string.
      */
     public abstract EncodeResult encode(final String normalized);
+
+    @Override
+    public List<String> tokenize(String sentence) {
+        return encode(sentence).stream().map(Pair::getKey).collect(Collectors.toList());
+    }
+
+    @Override
+    public String buildSentence(List<String> tokens) {
+        return tokens.stream().collect(Collectors.joining());
+    }
+
+    @Override
+    public NDList processInput(TranslatorContext ctx, String input) {
+        return new NDList(ctx.getNDManager().create(
+                encode(input).stream().map(Pair::getValue).mapToInt((i) -> i).toArray())
+        );
+    }
 
     /**
      * Returns the unknown piece
