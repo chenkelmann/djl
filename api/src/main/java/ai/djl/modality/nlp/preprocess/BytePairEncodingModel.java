@@ -9,17 +9,40 @@ import java.util.PriorityQueue;
 
 public class BytePairEncodingModel extends AbstractSentencePieceModel {
 
+    public BytePairEncodingModel(List<SentencePiece> pieces,
+                                 String unkPiece,
+                                 String bosPiece, String eosPiece,
+                                 String padPiece)
+    {
+        super(pieces, unkPiece, bosPiece, eosPiece, padPiece);
+    }
+
+    public BytePairEncodingModel(List<SentencePiece> pieces) {
+        this(pieces, null, null, null, null);
+    }
+
+    @Override
+    public EncodeResult encode(String normalized) {
+        if (normalized.isEmpty()) {
+            return new EncodeResult();
+        } else {
+            return new BytePairEncoder(normalized).encode();
+        }
+    }
+
     private static class SymbolPair implements Comparable<SymbolPair>{
         int left;     // left index of this pair
         int right;    // right index of this pair
         float score;  // score of this pair. large is better.
-        int size;     // length of this piece
+        String piece; // the piece build from the concatenated symbols
 
         @Override
         public int compareTo(SymbolPair that) {
-            int comparison = Float.compare(this.score, that.score);
+            // The java PriorityQueue returns the *lowest* comparable first,
+            // so we need to invert the result.
+            int comparison = Float.compare(this.score, that.score) * -1;
             if (comparison != 0) { return comparison; }
-            return Integer.compare(this.left, that.left);
+            return Integer.compare(this.left, that.left) * -1;
         }
     }
 
@@ -63,16 +86,16 @@ public class BytePairEncodingModel extends AbstractSentencePieceModel {
             h.left = left;
             h.right = right;
             h.score = getScore(id);
-            h.size = piece.length();
+            h.piece = piece;
             agenda.add(h);
 
             // Makes `rev_merge` for resegmentation.
             if (isUnused(id)) {
-                revMerge.put(piece, new Pair(leftPiece, rightPiece));
+                revMerge.put(piece, new Pair<>(leftPiece, rightPiece));
             }
         }
         private void resegment(final String w, final EncodeResult output) {
-            final Integer id = getId(w);
+            final int id = getId(w);
             //TODO: shouldn't -1 be impossible?
             if (id == -1 || !isUnused(id)) {
                 output.add(w, id);
@@ -98,7 +121,7 @@ public class BytePairEncodingModel extends AbstractSentencePieceModel {
                 final String prefix = prefixMatcher.findLongestPrefix(normalized, charIndex);
                 if (prefix.isEmpty()) {
                     final int cp = normalized.codePointAt(charIndex);
-                    s.piece = normalized.substring(charIndex, Character.charCount(cp));
+                    s.piece = normalized.substring(charIndex, charIndex + Character.charCount(cp));
                     s.freeze = false;
                 } else {
                     s.piece = prefix;
@@ -127,14 +150,14 @@ public class BytePairEncodingModel extends AbstractSentencePieceModel {
                 // `top` is no longer valid (part of it has been overwritten by a previous merge),
                 // discard and continue with next candidate.
                 if (topLeft.piece.isEmpty() || topRight.piece.isEmpty() ||
-                        topLeft.piece.length() + topRight.piece.length() != top.size) {
+                        topLeft.piece.length() + topRight.piece.length() != top.piece.length()) {
                     continue;
                 }
 
                 // Merge text into left symbol
                 //["a", "left", "right", "b", "c"] -> ["a", "leftright", "", "b", "c"]
                 //This does not change the number of symbols but their content
-                topLeft.piece = topLeft.piece + topRight.piece;;
+                topLeft.piece = topLeft.piece + topRight.piece;
 
                 // "Blank out" right symbol:
                 // Updates prev/next pointers. (we "ignore)
@@ -158,23 +181,6 @@ public class BytePairEncodingModel extends AbstractSentencePieceModel {
                 resegment(symbols.get(index).piece, output);
             }
             return output;
-        }
-    }
-
-    public BytePairEncodingModel(List<SentencePiece> pieces,
-                                 String unkPiece,
-                                 String bosPiece, String eosPiece,
-                                 String padPiece)
-    {
-        super(pieces, unkPiece, bosPiece, eosPiece, padPiece);
-    }
-
-    @Override
-    public EncodeResult encode(final String normalized) {
-        if (normalized.isEmpty()) {
-            return new EncodeResult();
-        } else {
-            return new BytePairEncoder(normalized).encode();
         }
     }
 }
