@@ -39,10 +39,12 @@ public class BytePairEncodingModel extends AbstractSentencePieceModel {
         @Override
         public int compareTo(SymbolPair that) {
             // The java PriorityQueue returns the *lowest* comparable first,
-            // so we need to invert the result.
+            // so we need to invert the result for the score
             int comparison = Float.compare(this.score, that.score) * -1;
             if (comparison != 0) { return comparison; }
-            return Integer.compare(this.left, that.left) * -1;
+            // The element furtherst to the left should be first in the queue,
+            // so we do not invert the comparison for "left'
+            return Integer.compare(this.left, that.left);
         }
     }
 
