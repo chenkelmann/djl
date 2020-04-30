@@ -5,7 +5,6 @@ import ai.djl.translate.PreProcessor;
 import ai.djl.translate.TranslatorContext;
 import ai.djl.util.Pair;
 import ai.djl.util.PairList;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
